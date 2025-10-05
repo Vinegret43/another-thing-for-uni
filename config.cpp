@@ -1,0 +1,11 @@
+// DUNGEON GENERATION
+const int DUNGEON_SIZE = 25;
+const float DANGER_MULTIPLIER = 1.2;
+
+// PLAYER CHARACTER
+const int MIN_STARTING_HELATH = 12;
+const int MAX_STARTING_HELATH = 16;
+const int MIN_STARTING_STR= 1;
+const int MAX_STARTING_STR= 3;
+const int MIN_STARTING_DEX= 1;
+const int MAX_STARTING_DEX= 3;
