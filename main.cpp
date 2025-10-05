@@ -23,9 +23,14 @@ protected:
     const char* description;
     const char* name;
 public:
-    virtual void use(Creature *c) {};
-    const char* get_name();
-    const char* get_description();
+    virtual void use(Creature *user, Creature *target = nullptr) {};
+    virtual bool requires_target() { return false; };
+    const char* get_name() {
+        return this->name;
+    };
+    const char* get_description() {
+        return this->description;
+    };
     virtual string to_string() { return this->name; };
     Item(const char* name, const char* description);
     friend ostream& operator<<(ostream&, Item&);
@@ -36,6 +41,7 @@ protected:
     int armor_class;
 public:
     int get_armor_class();
+    void use(Creature *user, Creature *target = nullptr) override;
     string to_string() override;
     Armor(int armor_class, const char* name, const char* description);
 };
@@ -45,6 +51,7 @@ protected:
     int hit_dice_sides;
 public:
     void attack(Creature *attacker, Creature *target);
+    void use(Creature *user, Creature *target = nullptr) override;
     int get_hit_dice_sides();
     string to_string() override;
     Weapon(int hit_dice_sides, const char* name, const char* description);
@@ -80,11 +87,17 @@ public:
     Room* get_current_room() {
         return this->room;
     }
-    vector<Item*>* get_inventory() {
+    const vector<Item*>* get_inventory() {
         return &(this->inventory);
     }
     void set_room(Room* room) {
         this->room = room;
+    }
+    void set_weapon(Weapon* weapon) {
+        this->weapon = weapon;
+    }
+    void set_armor(Armor* armor) {
+        this->armor = armor;
     }
     friend ostream& operator<<(ostream&, Item&);
     Creature(int health, int str, int dex, vector<Item*> inv, Weapon* weapon, Armor* armor);
@@ -153,16 +166,18 @@ public:
         assert(this->items.size() > index);
         return this->items.erase(this->items.begin() + index)[0];
     }
-    vector<Item*> get_items() {
-        return vector<Item*>(this->items);
+    const vector<Item*>* get_items() {
+        return &(this->items);
     }
-    vector<Creature*> get_creatures() {
-        return vector<Creature*>(this->creatures);
+    const vector<Creature*>* get_creatures() {
+        return &(this->creatures);
     }
     void play_round();
     char* description();
     Room(vector<Item*> items, vector<Room*> connected_rooms):
         items(items), connected_rooms(connected_rooms) {};
+    // От деструктора нет смысла: каждая комната живёт
+    // в памяти до самого завершения программы
 };
 
 using RoomGrid = vector<vector<variant<Room, long int>>>;
@@ -193,14 +208,6 @@ ostream& operator<<(ostream& s, Creature& creature) {
     return s;
 }
 
-const char* Item::get_description() {
-    return this->description;
-}
-
-const char* Item::get_name() {
-    return this->name;
-}
-
 Armor::Armor(int cls, const char* name, const char* description): armor_class(cls), Item(name, description) {}
 
 string Armor::to_string() {
@@ -214,6 +221,10 @@ string Armor::to_string() {
 
 int Armor::get_armor_class() {
     return this->armor_class;
+}
+
+void Armor::use(Creature* user, Creature* target) {
+    user->set_armor(this);
 }
 
 Weapon::Weapon(int dmg, const char* name, const char* description): hit_dice_sides(dmg), Item(name, description) {}
@@ -231,6 +242,10 @@ int Weapon::get_hit_dice_sides() {
     return this->hit_dice_sides;
 }
 
+void Weapon::use(Creature* user, Creature* target) {
+    user->set_weapon(this);
+}
+
 Creature::Creature(int health, int str, int dex, vector<Item*> inv, Weapon* weapon, Armor* armor):
     health(health), max_health(health), dexterity(dex), strength(str), inventory(inv), weapon(weapon), armor(armor) {}
 
@@ -240,22 +255,22 @@ bool Creature::is_dead() {
 
 void PlayerCharacter::inspect_room() {
     cout << "Предметы:" << endl;
-    vector<Item*> items = room->get_items();
-    if (items.size() == 0) {
+    const vector<Item*>* items = room->get_items();
+    if (items->size() == 0) {
         cout << "Тут пусто :(" << endl;
     } else {
-        for (int i = 0; i < items.size(); i++) {
-        cout << i+1 << ". " << *(items[i]) << endl;
+        for (int i = 0; i < items->size(); i++) {
+        cout << i+1 << ". " << *((*items)[i]) << endl;
         }
     }
 
     cout << "Существа:" << endl;
-    vector<Creature*> creatures = room->get_creatures();
-    if (creatures.size() == 1) {
+    const vector<Creature*>* creatures = room->get_creatures();
+    if (creatures->size() == 1) {
         cout << "Ты тут один... Может оно и к лучшему" << endl;
     } else {
-        for (int i = 0; i < creatures.size(); i++) {
-            cout << i+1 << ". " << creatures[i] << endl;
+        for (int i = 0; i < creatures->size(); i++) {
+            cout << i+1 << ". " << (*creatures)[i] << endl;
         }
     }
 }
@@ -268,7 +283,11 @@ void PlayerCharacter::inspect_self() {
     cout << "Доспехи: " << *(this->armor) << endl;
     cout << "Инвентарь: " << endl;
     for (int i = 0; i < this->inventory.size(); i++) {
-        cout << i+1 << ". " << *(this->inventory[i]) << endl;
+        cout << i+1 << ". " << *(this->inventory[i]);
+        if (this->inventory[i] == this->weapon || this->inventory[i] == this->armor) {
+            cout << " (экипировано)";
+        }
+        cout << endl;
     }
 }
 
@@ -280,6 +299,10 @@ void PlayerCharacter::make_turn() {
     if (holds_alternative<TakeItem>(this->turn)) {
         Item* item = this->room->pop_item(get<TakeItem>(this->turn).item_number - 1);
         this->inventory.push_back(item);
+    } else if (holds_alternative<UseItem>(this->turn)) {
+        UseItem action = get<UseItem>(this->turn);
+        // TODO: target check. Convert target number to pointer if it's required
+        this->inventory[action.item_number-1]->use(this);
     }
 }
 
@@ -347,7 +370,6 @@ Dungeon generate_dungeon() {
     Armor* armor = new Armor(12, "Проклёпанная кожа", "");
     inventory.push_back(weapon);
     inventory.push_back(armor);
-    // TODO: assign room on init
     PlayerCharacter *player = new PlayerCharacter(health, str, dex, inventory, weapon, armor);
 
     RoomGrid room_grid;
@@ -368,7 +390,7 @@ Dungeon generate_dungeon() {
 
     player->get_current_room() == starting_room;
 
-    // TODO: комната не добавляется в rooms
+    // TODO: комната не добавляется в Dungeon. Должна добавляться
     Dungeon dungeon(room_grid, player);
     return dungeon;
 }
@@ -376,9 +398,10 @@ Dungeon generate_dungeon() {
 const char* CMD_HELP = R"(Список доступных команд:
 me - осмотреть самого себя
 room - осмотреть текущую комнату
-use [предмет] ([цель]) - использовать предмет из инвентаря
+use [предмет] ([цель]) - использовать предмет из инвентаря. Если цель=0, использование на себе
 take [предмет] - взять предмет из инвентаря комнаты
 attack [цель] - атаковать существо основным оружием
+go [right/top/left/bottom] - переместиться в соседнюю комнату
 help - получить помощь по командам
 quit - выйти из приложения)";
 
@@ -417,16 +440,36 @@ int main(int argc, char* argv[]) {
             try {
                 item_number = parse_integer(split[1], 1);
             } catch (std::invalid_argument _) {
-                cout << "Неверный аргумент команды. Требуется целое число, большее единицы" << endl;
+                cout << "Неверный аргумент команды. Требуется натуральное число" << endl;
                 continue;
             }
 
-            if (item_number > dungeon.get_player()->get_inventory()->size() || item_number < 1) {
+            const vector<Item*>* inventory = dungeon.get_player()->get_inventory();
+            if (item_number > inventory->size() || item_number < 1) {
                 cout << "В инвентаре нет предмета с таким номером" << endl;
                 continue;
             }
 
             int target_number = 0;
+
+            if ((*inventory)[item_number-1]->requires_target()) {
+                if (split.size() < 3) {
+                    cout << "Укажите номер цели, к которой необходимо применить предмет" << endl;
+                    continue;
+                }
+                try {
+                    target_number = parse_integer(split[2], 0);
+                } catch (std::invalid_argument _) {
+                    cout << "Неверный аргумент команды. Требуется целое неотрицательное число" << endl;
+                    continue;
+                }
+                const vector<Creature*>* creatures = dungeon.get_player()->get_current_room()->get_creatures();
+                if (target_number > creatures->size() - 1) {
+                    cout << "Нет цели с таким номером" << endl;
+                    continue;
+                }
+            }
+
             UseItem action = { item_number, target_number };
             dungeon.get_player()->set_turn(action);
             dungeon.play_round();
@@ -440,11 +483,12 @@ int main(int argc, char* argv[]) {
             try {
                 item_number = parse_integer(split[1], 1);
             } catch (std::invalid_argument _) {
-                cout << "Неверный аргумент команды. Требуется целое число" << endl;
+                cout << "Неверный аргумент команды. Требуется натуральное число" << endl;
                 continue;
             }
 
-            if (item_number > dungeon.get_player()->get_current_room()->get_items().size() || item_number < 1) {
+            const vector<Item*>* items = dungeon.get_player()->get_current_room()->get_items();
+            if (item_number > items->size() || item_number < 1) {
                 cout << "В комнате нет предмета с таким номером" << endl;
                 continue;
             }
@@ -453,7 +497,26 @@ int main(int argc, char* argv[]) {
             dungeon.get_player()->set_turn(action);
             dungeon.play_round();
         } else if (!split[0].compare("attack")) {
-            cout << "HE ATTAC'" << endl;
+            int target_number = 0;
+
+            if (split.size() < 2) {
+                cout << "Укажите номер цели, которую хотите атаковать" << endl;
+                continue;
+            }
+            try {
+                target_number = parse_integer(split[1], 1);
+            } catch (std::invalid_argument _) {
+                cout << "Неверный аргумент команды. Требуется натуральное число" << endl;
+                continue;
+            }
+            const vector<Creature*>* creatures = dungeon.get_player()->get_current_room()->get_creatures();
+            if (target_number > creatures->size() - 1) {
+                cout << "Нет цели с таким номером" << endl;
+                continue;
+            }
+            // TODO: set action and play round
+        } else if (!split[0].compare("go")) {
+            cout << "Where he go" << endl;
         } else if (!split[0].compare("room")) {
             dungeon.get_player()->inspect_room();
         } else if (!split[0].compare("quit")) {
