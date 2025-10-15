@@ -732,6 +732,7 @@ LootTable<Item*> get_item_loot_table() {
     loot_table.add_item(0, 20, [](float d) { return (Item*)(HealingPotion::generate(d)); });
     loot_table.add_item(0.1, 5, [](float d) { return (Item*)(StrengthPotion::generate(d)); });
     loot_table.add_item(0.1, 5, [](float d) { return (Item*)(DexterityPotion::generate(d)); });
+    loot_table.add_item(0.2, 5, [](float d) { return (Item*)(new TeleportPotion()); });
 
     loot_table.add_item(0.1, 2, [](float d) { return (Item*)(new Weapon(6, "Короткий меч")); });
     loot_table.add_item(0.2, 3, [](float d) { return (Item*)(new Weapon(8, "Длинный меч")); });
