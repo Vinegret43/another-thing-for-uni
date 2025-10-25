@@ -147,7 +147,7 @@ public:
     int get_health() {
         return this->health;
     }
-    void set_health(int health) {
+    virtual void set_health(int health) {
         this->health = min(health, this->max_health);
     }
     void remove_item(Item* i) {
@@ -198,12 +198,18 @@ public:
     Room* get_room() {
         return this->room;
     }
+    Weapon* get_weapon() {
+        return this->weapon;
+    }
     void set_weapon(Weapon* weapon) {
         this->weapon = weapon;
     }
     void unset_weapon() {
         if (this->weapon != nullptr)
             this->weapon->unequip(this);
+    }
+    Armor* get_armor() {
+        return this->armor;
     }
     void set_armor(Armor* armor) {
         this->armor = armor;
@@ -218,10 +224,10 @@ public:
     int get_dexterity() {
         return this->dexterity;
     }
-    void set_strength(int strength) {
+    virtual void set_strength(int strength) {
         this->strength = min(strength, MAX_STRENGTH);
     }
-    void set_dexterity(int dexterity) {
+    virtual void set_dexterity(int dexterity) {
         this->dexterity = min(dexterity, MAX_DEXTERITY);
     }
     friend ostream& operator<<(ostream&, Item&);
@@ -284,6 +290,27 @@ public:
         inventory.push_back(weapon);
         inventory.push_back(armor);
         return new PlayerCharacter(health, str, dex, inventory, weapon, armor);
+    }
+    void set_health(int health) override {
+        health = min(health, this->max_health);
+        if (health > this->health) {
+            cout << "Здоровье восстановлено на " << (health - this->health) << " единиц" << endl;
+        }
+        this->health = health;
+    }
+    void set_strength(int strength) override {
+        strength = min(strength, MAX_STRENGTH);
+        if (strength > this->strength) {
+            cout << "Сила увеличена на " << (strength - this->strength) << " единиц" << endl;
+        }
+        this->strength = strength;
+    }
+    void set_dexterity(int dexterity) override {
+        dexterity = min(dexterity, MAX_DEXTERITY);
+        if (dexterity > this->dexterity) {
+            cout << "Ловкость увеличена на " << (dexterity - this->dexterity) << " единиц" << endl;
+        }
+        this->dexterity = dexterity;
     }
 };
 
@@ -550,6 +577,7 @@ void PlayerCharacter::inspect_self() {
 void PlayerCharacter::make_turn() {
     if (holds_alternative<TakeItem>(this->turn)) {
         Item* item = this->room->pop_item(get<TakeItem>(this->turn).item_number - 1);
+        cout << "Взят предмет: " << *item << endl;
         this->inventory.push_back(item);
     } else if (holds_alternative<UseItem>(this->turn)) {
         UseItem action = get<UseItem>(this->turn);
@@ -951,22 +979,32 @@ int main(int argc, char* argv[]) {
 
             int target_number = 0;
 
-            if ((*inventory)[item_number-1]->requires_target()) {
-                if (split.size() < 3) {
-                    cout << "Укажите номер цели, к которой необходимо применить предмет" << endl;
-                    continue;
-                }
-                try {
-                    target_number = parse_integer(split[2], 0);
-                } catch (std::invalid_argument _) {
-                    cout << "Неверный аргумент команды. Требуется целое неотрицательное число" << endl;
-                    continue;
-                }
-                const vector<Creature*>* creatures = dungeon->get_player()->get_current_room()->get_creatures();
-                if (target_number > creatures->size() - 1) {
-                    cout << "Нет цели с таким номером" << endl;
-                    continue;
-                }
+            // // UNUSED AT THE MOMENT
+            //
+            // if ((*inventory)[item_number-1]->requires_target()) {
+            //     if (split.size() < 3) {
+            //         cout << "Укажите номер цели, к которой необходимо применить предмет" << endl;
+            //         continue;
+            //     }
+            //     try {
+            //         target_number = parse_integer(split[2], 0);
+            //     } catch (std::invalid_argument _) {
+            //         cout << "Неверный аргумент команды. Требуется целое неотрицательное число" << endl;
+            //         continue;
+            //     }
+            //     const vector<Creature*>* creatures = dungeon->get_player()->get_current_room()->get_creatures();
+            //     if (target_number > creatures->size() - 1) {
+            //         cout << "Нет цели с таким номером" << endl;
+            //         continue;
+            //     }
+            // }
+
+            Item *item = (*dungeon->get_player()->get_inventory())[item_number-1];
+            Item *armor = dungeon->get_player()->get_armor();
+            Item *weapon = dungeon->get_player()->get_weapon();
+            if (item == armor || item == weapon) {
+                cout << "Данный предмет уже экипирован - его нельзя использовать повторно" << endl;
+                continue;
             }
 
             UseItem action = { item_number, target_number };
